@@ -370,7 +370,7 @@ class AudioStream {
         }
     }
 
-    getNextBuffer(buffer: AudioBuffer, playTimeMs: number) {
+    getNextBuffer(buffer: IAudioBuffer, playTimeMs: number) {
         if (!this.chunk) {
             this.chunk = this.chunks.shift()
         }
@@ -770,10 +770,10 @@ class OpusDecoder extends Decoder {
         this.sampleFormat.rate = view.getUint32(4, true);
         this.sampleFormat.bits = view.getUint16(8, true);
         this.sampleFormat.channels = view.getUint16(10, true);
-        
+
         this.initDecoder()
             .catch(err => console.error("Failed to initialize Opus decoder:", err));
-            
+
         console.log("Opus sampleformat:", this.sampleFormat.toString());
         return this.sampleFormat;
     }
@@ -786,7 +786,7 @@ class OpusDecoder extends Decoder {
 
         try {
             const decoded = await this.decoder.decodeFrame(new Uint8Array(chunk.payload));
-            
+
             const bytesPerSample = this.sampleFormat.sampleSize();
             const buffer = new ArrayBuffer(decoded.channelData[0].length * bytesPerSample * this.sampleFormat.channels);
             const view = new DataView(buffer);
@@ -801,7 +801,7 @@ class OpusDecoder extends Decoder {
                     }
                 }
             }
-            
+
             chunk.clearPayload();
             chunk.addPayload(buffer);
             return chunk;
@@ -1074,7 +1074,7 @@ class SnapStream {
     syncHandle: number = -1;
     // ageBuffer: Array<number>;
     audioBuffers: Array<PlayBuffer> = new Array<PlayBuffer>();
-    freeBuffers: Array<AudioBuffer> = new Array<AudioBuffer>();
+    freeBuffers: Array<IAudioBuffer> = new Array<IAudioBuffer>();
 
     timeProvider: TimeProvider;
     stream: AudioStream | undefined;
