@@ -2,6 +2,10 @@
 
 ## Version 0.9.3
 
+### Bugfixes
+
+- Fix CI build
+
 ### General
 
 - Update packages
