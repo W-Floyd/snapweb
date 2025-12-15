@@ -12,6 +12,7 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import silence from '../assets/10-seconds-of-silence.mp3';
 import snapcast512 from '../assets/snapcast-512.png';
+import { log } from 'node:console';
 
 
 const lightTheme = createTheme({
@@ -93,6 +94,7 @@ export default function SnapWeb() {
   const [server, setServer] = useState(new Snapcast.Server());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showOffline, setShowOffline] = useState(config.showOffline);
+  const [autoPlay, setAutoPlay] = useState(config.autoPlay);
   const [theme, setTheme] = useState(config.theme);
   const [serverUrl, setServerUrl] = useState(config.baseUrl);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -144,6 +146,9 @@ export default function SnapWeb() {
         setConnectError(error);
     }
     setConnected(connected);
+    if (autoPlay || (document.location.hash.match(/autoplay/) !== null)) {
+      setIsPlaying(true);
+    }
   };
 
 
@@ -381,7 +386,7 @@ export default function SnapWeb() {
         >
           {list()}
         </Drawer>
-        <Server server={server} snapcontrol={snapControlRef.current} showOffline={showOffline} />
+        <Server server={server} snapcontrol={snapControlRef.current} showOffline={showOffline} autoPlay={autoPlay} />
         {snackbar()}
         <AboutDialog open={aboutOpen} onClose={() => { setAboutOpen(false); }} />
         <SettingsDialog open={settingsOpen} onClose={(apply: boolean) => {
@@ -391,6 +396,7 @@ export default function SnapWeb() {
             setServerUrl(config.baseUrl);
             setTheme(config.theme);
             setShowOffline(config.showOffline);
+            setAutoPlay(config.autoPlay);
           }
         }} />
       </div >
