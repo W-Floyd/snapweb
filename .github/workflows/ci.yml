@@ -33,6 +33,9 @@ jobs:
     - name: Clean npm cache
       run: npm cache clean --force
 
+    - name: NPM Install
+      run: npm install
+
     - name: NPM Clean install
       run: npm ci
 
