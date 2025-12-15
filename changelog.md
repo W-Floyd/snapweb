@@ -1,5 +1,18 @@
 # Snapweb changelog
 
+## Version 0.9.3
+
+### General
+
+- Update packages
+- Update URLs to snapcast org
+
+### Contributors
+
+- @badaix
+
+_Johannes Pohl <snapweb@badaix.de>  Mon, 15 Dec 2025 00:13:37 +0200_
+
 ## Version 0.9.2
 
 ### Bugfixes
