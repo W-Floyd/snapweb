@@ -1,8 +1,8 @@
 # Snapweb
 
-Web client for [Snapcast](https://github.com/badaix/snapcast), optimized for
+Web client for [Snapcast](https://github.com/snapcast/snapcast), optimized for
 mobile devices, with the look and feel of
-[Snapdroid](https://github.com/badaix/snapdroid)
+[Snapdroid](https://github.com/snapcast/snapdroid)
 
 ## Develop
 
@@ -29,7 +29,7 @@ mobile devices, with the look and feel of
    `http://<snapserver host>:1780`
 1. Enjoy :)
 
-Prebuilt versions can be downloaded as zip archive or debian package in [Releases](https://github.com/badaix/snapweb/releases).
+Prebuilt versions can be downloaded as zip archive or debian package in [Releases](https://github.com/snapcast/snapweb/releases).
 
 ## Setup as WebApp
 
@@ -40,18 +40,18 @@ On Android open `http://<snapserver host>:1780` in Chrome and select in the menu
 
 Screenshot is taken on a Pixel 7 emulation in Chrome DevTools
 
-![Snapweb-Dark](https://raw.githubusercontent.com/badaix/snapweb/master/snapweb_dark.png#gh-dark-mode-only)
-![Snapweb-Light](https://raw.githubusercontent.com/badaix/snapweb/master/snapweb_light.png#gh-light-mode-only)
+![Snapweb-Dark](https://raw.githubusercontent.com/snapcast/snapweb/master/snapweb_dark.png#gh-dark-mode-only)
+![Snapweb-Light](https://raw.githubusercontent.com/snapcast/snapweb/master/snapweb_light.png#gh-light-mode-only)
 
 ## Contributing
 
 Since my time and my web development skills are limited, pull requests are
 highly appreciated. Please check the list of
-[open issues](https://github.com/badaix/snapweb/issues).\
+[open issues](https://github.com/snapcast/snapweb/issues).\
 Branch from the `develop` branch and ensure it is up to date with the current
 `develop` branch before submitting your pull request.
 
 High prio issues:
 
-- Missing opus support [#8](https://github.com/badaix/snapweb/issues/8)
-- Missing Vorbis support [#14](https://github.com/badaix/snapweb/issues/14)
+- Missing opus support [#8](https://github.com/snapcast/snapweb/issues/8)
+- Missing Vorbis support [#14](https://github.com/snapcast/snapweb/issues/14)

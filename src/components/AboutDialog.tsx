@@ -19,7 +19,7 @@ export default function AboutDialog(props: { open: boolean, onClose: () => void 
           >
             <Typography variant="h5" gutterBottom>Snapweb version {version}</Typography>
             <Typography variant="subtitle1" gutterBottom>Copyright &copy; 2020 - 2025 <a href="mailto:snapweb@badaix.de">BadAix</a></Typography>
-            <Typography variant="subtitle1" gutterBottom>Author: <a href="https://de.linkedin.com/pub/johannes-pohl/65/6a6/253">Johannes Pohl</a> and <a href="https://github.com/badaix/snapweb/graphs/contributors">contributors</a></Typography>
+            <Typography variant="subtitle1" gutterBottom>Author: <a href="https://de.linkedin.com/pub/johannes-pohl/65/6a6/253">Johannes Pohl</a> and <a href="https://github.com/snapcast/snapweb/graphs/contributors">contributors</a></Typography>
             <Typography variant="h6" gutterBottom>License</Typography>
             <Typography variant="subtitle1" gutterBottom>Snapweb is licensed under the <a href="#gpl">GNU General Public License, version 3 or later </a> (herein referred to as GPL).</Typography>
 
@@ -30,7 +30,7 @@ export default function AboutDialog(props: { open: boolean, onClose: () => void 
 
             <Typography variant="h6" gutterBottom>Sources</Typography>
             <Typography variant="subtitle1" gutterBottom>
-              The sources to this application can be retrieved at <a href="https://github.com/badaix/snapweb">https://github.com/badaix/snapweb</a>.
+              The sources to this application can be retrieved at <a href="https://github.com/snapcast/snapweb">https://github.com/snapcast/snapweb</a>.
             </Typography>
 
             <Typography variant="h6" gutterBottom>Libraries</Typography>

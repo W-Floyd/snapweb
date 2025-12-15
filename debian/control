@@ -4,9 +4,9 @@ Priority: optional
 Maintainer: Johannes Pohl <snapweb@badaix.de>
 Build-Depends: debhelper-compat (= 13)
 Standards-Version: 4.5.1
-Homepage: https://github.com/badaix/snapweb
-Vcs-Git: https://github.com/badaix/snapweb.git
-Vcs-Browser: https://github.com/badaix/snapweb
+Homepage: https://github.com/snapcast/snapweb
+Vcs-Git: https://github.com/snapcast/snapweb.git
+Vcs-Browser: https://github.com/snapcast/snapweb
 
 Package: snapweb
 Architecture: all
