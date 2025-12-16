@@ -12,7 +12,6 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import silence from '../assets/10-seconds-of-silence.mp3';
 import snapcast512 from '../assets/snapcast-512.png';
-import { log } from 'node:console';
 
 
 const lightTheme = createTheme({
@@ -147,6 +146,7 @@ export default function SnapWeb() {
     }
     setConnected(connected);
     if (autoPlay || (document.location.hash.match(/autoplay/) !== null)) {
+      console.debug("Autoplaying")
       setIsPlaying(true);
     }
   };
