@@ -45,7 +45,7 @@ export default function SettingsDialog(props: { open: boolean, onClose: (_apply:
           </FormControl>
           <Box sx={{ py: 1 }} />
           <FormControlLabel control={<Checkbox checked={showOffline} onChange={(_event: React.ChangeEvent<HTMLInputElement>, checked: boolean) => setShowOffline(checked)} />} label="Show offline clients" />
-          <FormControlLabel control={<Checkbox checked={autoPlay} onChange={(_event: React.ChangeEvent<HTMLInputElement>, checked: boolean) => setAutoPlay(checked)} />} label="Automatically connect on load" />
+          <FormControlLabel control={<Checkbox checked={autoPlay} onChange={(_event: React.ChangeEvent<HTMLInputElement>, checked: boolean) => setAutoPlay(checked)} />} label="Autoplay on connect" />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { handleClose(false) }}>Cancel</Button>
