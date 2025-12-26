@@ -140,6 +140,21 @@ export default function SnapWeb() {
     return (autoPlay || (document.location.hash.match(/autoplay/) !== null));
   }
 
+  function isAutoplaySupported(): string {
+    if ("getAutoplayPolicy" in navigator) {
+      try {
+        const policy = (navigator as any).getAutoplayPolicy("mediaelement");
+        return policy;
+      } catch (error) {
+        console.warn("getAutoplayPolicy failed:", error);
+      }
+    }
+
+    return "unknown"
+  };
+
+  const autoplayPolicy = isAutoplaySupported()
+
   snapControlRef.current.onChange = (_control: SnapControl, server: Snapcast.Server) => handleChange(server);
   snapControlRef.current.onConnectionChanged = (_control: SnapControl, connected: boolean, error?: string) => {
     console.log("Connection state changed: " + connected + ", error: " + error);
@@ -151,8 +166,16 @@ export default function SnapWeb() {
     }
     setConnected(connected);
     if (shouldAutoplay()) {
-      console.debug("Attempting autoplay")
-      setIsPlaying(true);
+      if (autoplayPolicy === "allowed") {
+        console.debug("autoplayPolicy:", autoplayPolicy)
+        setIsPlaying(true);
+      } else if (autoplayPolicy === "unknown") {
+        console.warn("autoplayPolicy unknown, attempting autoplay anyway")
+        setIsPlaying(true);
+      } else {
+        console.warn("autoplayPolicy:", autoplayPolicy)
+        setAutoplaySuccess(false)
+      }
     }
   };
 
@@ -353,7 +376,7 @@ export default function SnapWeb() {
             key='autoplay-error'
             onClose={(_, reason: string) => { if (reason !== 'clickaway') { console.log("Snackbar - onClose") } }}>
             <Alert onClose={(_) => { console.log("Snackbar - alert onClose") }} severity="error" sx={{ width: '100%' }}>
-              Autoplay failed
+              {"Autoplay failed with policy: " + autoplayPolicy}
             </Alert>
           </Snackbar >
         )
