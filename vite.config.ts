@@ -10,6 +10,9 @@ export default defineConfig({
   base: '/audio/',
   plugins: [react(),
   VitePWA({
+    // Disable service worker when embedded under ImmichFrame — the SW races
+    // with the initial asset fetch during install, causing NS_ERROR_CORRUPTED_CONTENT.
+    disable: true,
     registerType: 'autoUpdate',
     includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
     manifest: {
