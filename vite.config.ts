@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
   },
-  base: './',
+  base: '/audio/',
   plugins: [react(),
   VitePWA({
     registerType: 'autoUpdate',

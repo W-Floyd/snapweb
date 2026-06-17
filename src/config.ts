@@ -1,5 +1,15 @@
 const host = import.meta.env.VITE_APP_SNAPSERVER_HOST || window.location.host;
 
+// Allow parent frame to supply the snapserver URL via ?host= query param.
+// If present, it overwrites the stored value so the frame auto-connects.
+(function applyUrlParamHost() {
+  const params = new URLSearchParams(window.location.search);
+  const paramHost = params.get("host");
+  if (paramHost && window.localStorage) {
+    window.localStorage.setItem("snapserver.host", paramHost);
+  }
+})();
+
 const keys = {
   snapserver_host: "snapserver.host",
   theme: "theme",

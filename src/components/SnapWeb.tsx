@@ -1,4 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+
+function notifyParent(type: string, detail?: Record<string, unknown>) {
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ source: 'snapweb', type, ...detail }, '*');
+  }
+}
 import Server from './Server';
 import AboutDialog from './AboutDialog';
 import SettingsDialog from './Settings';
@@ -114,6 +120,18 @@ export default function SnapWeb() {
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', _event => {
     setTheme(config.theme);
   });
+
+  // Listen for play/stop commands from the parent frame (e.g. ImmichFrame overlay button).
+  const handleParentMessage = useCallback((event: MessageEvent) => {
+    if (!event.data || event.data.source !== 'immichframe') return;
+    if (event.data.type === 'play') setIsPlaying(true);
+    if (event.data.type === 'stop') setIsPlaying(false);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('message', handleParentMessage);
+    return () => window.removeEventListener('message', handleParentMessage);
+  }, [handleParentMessage]);
 
   useEffect(() => {
     console.debug("server updated");
@@ -313,10 +331,12 @@ export default function SnapWeb() {
       audioRef.current.play().then(
         () => {
           setAutoplaySuccess(true)
+          notifyParent('playing')
           snapstreamRef.current = new SnapStream(config.baseUrl);
         },
         (error) => {
           setAutoplaySuccess(false)
+          notifyParent('autoplay-failed', { policy: autoplayPolicy })
           if (snapstreamRef.current)
             snapstreamRef.current.stop();
           snapstreamRef.current = null;
@@ -330,6 +350,7 @@ export default function SnapWeb() {
       // });
     } else {
       console.debug("isPlaying changed to false");
+      notifyParent('stopped')
       if (snapstreamRef.current)
         snapstreamRef.current.stop();
       snapstreamRef.current = null;
