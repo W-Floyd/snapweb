@@ -1,4 +1,7 @@
-const host = import.meta.env.VITE_APP_SNAPSERVER_HOST || window.location.host;
+// VITE_APP_SNAPSERVER_HOST="" disables the default (e.g. GH Pages build).
+// Undefined (not set) falls back to window.location.host for self-hosted use.
+const envHost = import.meta.env.VITE_APP_SNAPSERVER_HOST;
+const host = envHost !== undefined ? envHost : window.location.host;
 
 const keys = {
   snapserver_host: "snapserver.host",
@@ -33,7 +36,8 @@ function getPersistentValue(key: string, defaultValue: string = ""): string {
 
 const config = {
   get baseUrl() {
-    return getPersistentValue(keys.snapserver_host, (window.location.protocol === "https:" ? "wss://" : "ws://") + host);
+    const defaultUrl = host ? (window.location.protocol === "https:" ? "wss://" : "ws://") + host : "";
+    return getPersistentValue(keys.snapserver_host, defaultUrl);
   },
   set baseUrl(value) {
     setPersistentValue(keys.snapserver_host, value);
