@@ -33,6 +33,15 @@ function getChromeVersion(): number | null {
 }
 
 function uuidv4(): string {
+    // crypto.randomUUID is only available in secure contexts (https/localhost);
+    // fall back to a Math.random-based UUID when it's missing or throws.
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        try {
+            return crypto.randomUUID();
+        } catch {
+            /* fall through */
+        }
+    }
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
         const r = Math.random() * 16 | 0, v = c === 'x' ? r : ((r & 0x3) | 0x8);
         return v.toString(16);
@@ -176,12 +185,11 @@ class JsonMessage extends BaseMessage {
     serialize(): ArrayBuffer {
         const buffer = super.serialize();
         const view = new DataView(buffer);
-        const jsonStr = JSON.stringify(this.json);
-        view.setUint32(26, jsonStr.length, true);
         const encoder = new TextEncoder();
-        const encoded = encoder.encode(jsonStr);
-        for (let i = 0; i < encoded.length; ++i)
-            view.setUint8(30 + i, encoded[i]);
+        const encoded = encoder.encode(JSON.stringify(this.json));
+        // size must be the UTF-8 byte length, not the UTF-16 string length
+        view.setUint32(26, encoded.length, true);
+        new Uint8Array(buffer).set(encoded, 30);
         return buffer;
     }
 
@@ -318,17 +326,10 @@ class PcmChunkMessage extends BaseMessage {
     }
 
     addPayload(buffer: ArrayBuffer) {
-        const payload = new ArrayBuffer(this.payload.byteLength + buffer.byteLength);
-        const view = new DataView(payload);
-        const viewOld = new DataView(this.payload);
-        const viewNew = new DataView(buffer);
-        for (let i = 0; i < viewOld.byteLength; ++i) {
-            view.setInt8(i, viewOld.getInt8(i));
-        }
-        for (let i = 0; i < viewNew.byteLength; ++i) {
-            view.setInt8(i + viewOld.byteLength, viewNew.getInt8(i));
-        }
-        this.payload = payload;
+        const combined = new Uint8Array(this.payload.byteLength + buffer.byteLength);
+        combined.set(new Uint8Array(this.payload), 0);
+        combined.set(new Uint8Array(buffer), this.payload.byteLength);
+        this.payload = combined.buffer;
     }
 
     timestamp: Tv = new Tv(0, 0);
@@ -686,28 +687,29 @@ class FlacDecoder extends Decoder {
     }
 
     write_callback_fn(data: Array<Uint8Array>, frameInfo: Flac.BlockMetadata) {
-        // console.log("  write frame metadata blocksize: " + frameInfo.blocksize + ", channels: " + frameInfo.channels + ", len: " + data.length);
         if (this.cacheInfo.isCachedChunk) {
-            // there was no call to read, so it's some cached data
             this.cacheInfo.cachedBlocks += frameInfo.blocksize;
         }
+        const sample_size = this.sampleFormat.sampleSize();
         const payload = new ArrayBuffer(this.sampleFormat.frameSize() * frameInfo.blocksize);
-        const view = new DataView(payload);
-        for (let channel: number = 0; channel < frameInfo.channels; ++channel) {
-            const channelData = new DataView(data[channel].buffer, 0, data[channel].buffer.byteLength);
-            // console.log("channelData: " + channelData.byteLength + ", blocksize: " + frameInfo.blocksize);
-            const sample_size = this.sampleFormat.sampleSize()
-            for (let i: number = 0; i < frameInfo.blocksize; ++i) {
-                const write_idx = sample_size * (frameInfo.channels * i + channel);
-                const read_idx = sample_size * i;
-                if (sample_size == 4)
-                    view.setInt32(write_idx, channelData.getInt32(read_idx, true), true);
-                else
-                    view.setInt16(write_idx, channelData.getInt16(read_idx, true), true);
+        if (sample_size === 4) {
+            const out = new Int32Array(payload);
+            for (let channel = 0; channel < frameInfo.channels; ++channel) {
+                const src = new Int32Array(data[channel].buffer, 0, frameInfo.blocksize);
+                for (let i = 0; i < frameInfo.blocksize; ++i) {
+                    out[i * frameInfo.channels + channel] = src[i];
+                }
+            }
+        } else {
+            const out = new Int16Array(payload);
+            for (let channel = 0; channel < frameInfo.channels; ++channel) {
+                const src = new Int16Array(data[channel].buffer, 0, frameInfo.blocksize);
+                for (let i = 0; i < frameInfo.blocksize; ++i) {
+                    out[i * frameInfo.channels + channel] = src[i];
+                }
             }
         }
         this.pcmChunk!.addPayload(payload);
-        // console.log("write: " + payload.byteLength + ", len: " + this.pcmChunk!.payloadSize());
     }
 
     /** @memberOf decode */
@@ -787,17 +789,26 @@ class OpusDecoder extends Decoder {
         try {
             const decoded = await this.decoder.decodeFrame(new Uint8Array(chunk.payload));
 
+            const numSamples = decoded.channelData[0].length;
             const bytesPerSample = this.sampleFormat.sampleSize();
-            const buffer = new ArrayBuffer(decoded.channelData[0].length * bytesPerSample * this.sampleFormat.channels);
-            const view = new DataView(buffer);
+            const numChannels = this.sampleFormat.channels;
+            const scale = (1 << (this.sampleFormat.bits - 1)) - 1;
+            const buffer = new ArrayBuffer(numSamples * bytesPerSample * numChannels);
 
-            for (let i = 0; i < decoded.channelData[0].length; i++) {
-                for (let channel = 0; channel < this.sampleFormat.channels; channel++) {
-                    const sample = Math.max(-1, Math.min(1, decoded.channelData[channel][i])) * ((1 << (this.sampleFormat.bits - 1)) - 1);
-                    if (bytesPerSample === 4) {
-                        view.setInt32((i * this.sampleFormat.channels + channel) * 4, sample, true);
-                    } else {
-                        view.setInt16((i * this.sampleFormat.channels + channel) * 2, sample, true);
+            if (bytesPerSample === 4) {
+                const out = new Int32Array(buffer);
+                for (let i = 0; i < numSamples; i++) {
+                    for (let ch = 0; ch < numChannels; ch++) {
+                        const s = decoded.channelData[ch][i];
+                        out[i * numChannels + ch] = (s < -1 ? -scale : s > 1 ? scale : s * scale) | 0;
+                    }
+                }
+            } else {
+                const out = new Int16Array(buffer);
+                for (let i = 0; i < numSamples; i++) {
+                    for (let ch = 0; ch < numChannels; ch++) {
+                        const s = decoded.channelData[ch][i];
+                        out[i * numChannels + ch] = (s < -1 ? -scale : s > 1 ? scale : s * scale) | 0;
                     }
                 }
             }
