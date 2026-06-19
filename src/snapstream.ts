@@ -233,8 +233,8 @@ class HelloMessage extends JsonMessage {
 
     mac: string = "";
     hostname: string = "";
-    version: string = import.meta.env.VITE_APP_VERSION;
-    clientName = import.meta.env.VITE_APP_NAME;
+    version: string = (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "0.0.0";
+    clientName: string = (import.meta.env.VITE_APP_NAME as string | undefined) ?? "Snapweb";
     os: string = "";
     arch: string = "web";
     instance: number = 1;
