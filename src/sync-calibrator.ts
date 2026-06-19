@@ -110,19 +110,21 @@ export async function calibrate(
         throw new CalibrationError('Not enough audio captured. Is music playing?');
     }
 
-    // synaudio requires the comparison to be a subset of the base.
-    // Use mic as base (longer in practice due to getUserMedia startup lag),
-    // reference as comparison trimmed by 0.5s each side to ensure containment.
-    const trimSamples = Math.floor(sampleRate * 0.5);
-    const refTrimmed = refMono.length > trimSamples * 2
-        ? refMono.slice(trimSamples, refMono.length - trimSamples)
-        : refMono;
+    // synaudio requires the comparison to be shorter than the base so it can
+    // slide it to find the best alignment. Taking a fixed 2s window from the
+    // middle of the reference (rather than trimming both ends) maximises the
+    // search range: with a 4s mic recording, this gives ~2s of searchable
+    // offset range (±1s). A larger correlationSampleSize (~1s) gives synaudio
+    // enough musical structure for reliable matching even with reverb/noise.
+    const windowSamples = Math.min(Math.floor(sampleRate * 2), Math.floor(refMono.length * 0.6));
+    const windowStart = Math.floor((refMono.length - windowSamples) / 2);
+    const refWindow = refMono.slice(windowStart, windowStart + windowSamples);
 
-    const synAudio = new SynAudio({ correlationSampleSize: 11025, correlationThreshold: 0.3 });
+    const synAudio = new SynAudio({ correlationSampleSize: 44100, correlationThreshold: 0.3 });
 
     const result = await synAudio.sync(
-        { channelData: [micMono],   samplesDecoded: micMono.length },
-        { channelData: [refTrimmed], samplesDecoded: refTrimmed.length },
+        { channelData: [micMono],  samplesDecoded: micMono.length },
+        { channelData: [refWindow], samplesDecoded: refWindow.length },
     );
 
     if (!isFinite(result.correlation) || result.correlation < 0.3) {
@@ -132,18 +134,13 @@ export async function calibrate(
         );
     }
 
-    // sampleOffset: where refTrimmed[0] aligns within micMono.
-    // Positive → mic has N samples of audio before the reference starts
-    //           → the target device played that content N samples AFTER snapweb did
-    //           → the target device is N samples BEHIND (playing late)
-    //           → increase its Snapcast latency to make it play earlier
-    // Negative → target device is AHEAD (playing early)
-    //           → decrease its Snapcast latency
+    // result.sampleOffset: where refWindow[0] aligns within micMono.
+    // refWindow[0] is refMono[windowStart], so the wall-clock offset is:
+    //   offsetSamples = sampleOffset - windowStart
+    // Positive → target played that content later than snapweb → target is BEHIND
+    // Negative → target is AHEAD
     // Caller applies: newLatency = currentLatency + offsetMs
-    //
-    // The trim shifts the comparison forward by trimSamples relative to the original
-    // reference, so subtract trimSamples to recover wall-clock-aligned offset.
-    const rawOffsetSamples = result.sampleOffset - trimSamples;
+    const rawOffsetSamples = result.sampleOffset - windowStart;
     const offsetMs = (rawOffsetSamples / sampleRate) * 1000;
 
     return { offsetMs, correlation: result.correlation };
