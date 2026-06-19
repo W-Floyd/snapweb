@@ -527,6 +527,145 @@ class AudioStream {
 }
 
 
+// 2-state Kalman filter with Sage-Husa M-estimate adaptive noise.
+// Ported from snapclient/components/timefilter/TimeFilter.c
+// State vector: [offset (ms), drift (ms/ms = dimensionless rate)]
+//
+// Sage-Husa estimates measurement noise R̂ from the innovation sequence so no
+// manual threshold is required. The M-estimate (Mohamed & Schwarz 1999) variant
+// applies a Huber weight to each innovation, preventing outlier spikes from
+// corrupting the state or R̂ while still allowing the filter to track real
+// offset changes.
+//
+// R̂ is intentionally NOT reset on reset() — the learned network characteristics
+// carry over so re-sync converges faster.
+class KalmanTimeFilter {
+    private count = 0
+    private offset = 0
+    private drift = 0
+    private offsetCov = Infinity
+    private offsetDriftCov = 0
+    private driftCov = 0
+    private lastUpdate = 0
+    private useDrift = false
+
+    private rHat: number  // Sage-Husa adaptive measurement noise estimate (ms²)
+
+    private readonly processVar: number
+    private readonly driftProcessVar: number
+    private readonly forgettingFactor: number  // b ∈ (0.95, 0.99)
+    private readonly huberC: number            // 1.345 → 95% Gaussian efficiency
+    private readonly rMin: number              // hard floor on R̂ (ms²)
+    private readonly minSamples: number
+    private readonly driftSigThreshSq: number
+
+    constructor(
+        processStdDev      = 0.01,   // offset process noise (ms/√ms)
+        driftProcessStdDev = 1e-7,   // drift process noise
+        rHatInit           = 25.0,   // initial R̂ (ms²) — ~5ms std dev, ~10ms RTT assumed
+        forgettingFactor   = 0.97,   // b — gives ~33-sample memory at 1Hz
+        huberC             = 1.345,  // standard Huber constant
+        rMin               = 0.01,   // minimum R̂ (ms²) — 0.1ms floor
+        minSamples         = 5,
+        driftSigThreshold  = 2.0
+    ) {
+        this.processVar       = processStdDev * processStdDev
+        this.driftProcessVar  = driftProcessStdDev * driftProcessStdDev
+        this.rHat             = rHatInit
+        this.forgettingFactor = forgettingFactor
+        this.huberC           = huberC
+        this.rMin             = rMin
+        this.minSamples       = minSamples
+        this.driftSigThreshSq = driftSigThreshold * driftSigThreshold
+    }
+
+    reset() {
+        this.count          = 0
+        this.offset         = 0
+        this.drift          = 0
+        this.offsetCov      = Infinity
+        this.offsetDriftCov = 0
+        this.driftCov       = 0
+        this.lastUpdate     = 0
+        this.useDrift       = false
+        // rHat intentionally preserved — learned noise carries over to re-sync
+    }
+
+    insert(measurement: number, timeAdded: number) {
+        if (timeAdded <= this.lastUpdate) return
+
+        // Cap dt to 5s to prevent driftCov*dt² explosion after a long suspension
+        const dt  = Math.min(timeAdded - this.lastUpdate, 5000)
+        const dt2 = dt * dt
+        this.lastUpdate = timeAdded
+
+        if (this.count === 0) {
+            this.count++
+            this.offset    = measurement
+            this.offsetCov = this.rHat
+            return
+        }
+
+        if (this.count === 1) {
+            this.count++
+            this.drift     = (measurement - this.offset) / dt
+            this.offset    = measurement
+            this.driftCov  = (this.offsetCov + this.rHat) / dt2
+            this.offsetCov = this.rHat
+            return
+        }
+
+        // Predict: x = F*x, P = F*P*F^T + Q  (F = [1,dt; 0,1])
+        const predOffset      = this.offset + this.drift * dt
+        const newDriftCov     = this.driftCov + dt * this.driftProcessVar
+        const newOffsetDriftCov = this.offsetDriftCov + this.driftCov * dt
+        const newOffsetCov    = this.offsetCov + 2 * this.offsetDriftCov * dt +
+                                this.driftCov * dt2 + dt * this.processVar
+
+        // Innovation
+        const residual  = measurement - predOffset
+        const innovStd  = Math.sqrt(newOffsetCov + this.rHat)
+
+        // Huber M-weight: downweight outliers beyond huberC·σ without rejecting them
+        const normResid = Math.abs(residual) / innovStd
+        const weight    = normResid <= this.huberC ? 1.0 : this.huberC / normResid
+
+        // Effective R for this step — inflated for outliers so gain is auto-reduced
+        const rEffective = this.rHat / weight
+
+        // Update: K = P*H^T*(H*P*H^T + R_eff)^-1, H = [1,0]
+        const invS    = 1.0 / (newOffsetCov + rEffective)
+        const kOffset = newOffsetCov * invS
+        const kDrift  = newOffsetDriftCov * invS
+
+        this.offset         = predOffset + kOffset * residual
+        this.drift         += kDrift * residual
+        this.driftCov       = newDriftCov       - kDrift  * newOffsetDriftCov
+        this.offsetDriftCov = newOffsetDriftCov - kDrift  * newOffsetCov
+        this.offsetCov      = newOffsetCov      - kOffset * newOffsetCov
+
+        // Sage-Husa M-estimate: update R̂ from robustified innovation
+        if (this.count >= this.minSamples) {
+            const robustResid = weight * residual  // Huber-clipped innovation
+            const d           = 1 - this.forgettingFactor
+            const rHatRaw     = (1 - d) * this.rHat + d * (robustResid * robustResid - newOffsetCov)
+            this.rHat         = Math.max(rHatRaw, this.rMin)
+        } else {
+            this.count++
+        }
+
+        this.useDrift = this.drift * this.drift > this.driftSigThreshSq * this.driftCov
+    }
+
+    // Returns estimated clock offset at clientTimeMs, extrapolating forward
+    // from the last measurement using drift when drift is statistically significant.
+    getOffset(clientTimeMs: number): number {
+        const dt = clientTimeMs - this.lastUpdate
+        return this.offset + (this.useDrift ? this.drift : 0) * dt
+    }
+}
+
+
 class TimeProvider {
     constructor(ctx?: IAudioContextPatched) {
         if (ctx) {
@@ -540,22 +679,11 @@ class TimeProvider {
     }
 
     reset() {
-        this.diffBuffer.length = 0;
-        this.diff = 0;
+        this.filter.reset()
     }
 
     setDiff(c2s: number, s2c: number) {
-        if (this.now() === 0) {
-            this.reset()
-        } else {
-            if (this.diffBuffer.push((c2s - s2c) / 2) > 100)
-                this.diffBuffer.shift();
-            const sorted = [...this.diffBuffer];
-            sorted.sort((a, b) => a - b);
-            this.diff = sorted[Math.floor(sorted.length / 2)];
-        }
-        // console.debug("c2s: " + c2s.toFixed(2) + ", s2c: " + s2c.toFixed(2) + ", diff: " + this.diff.toFixed(2) + ", now: " + this.now().toFixed(2) + ", server.now: " + this.serverNow().toFixed(2) + ", win.now: " + window.performance.now().toFixed(2));
-        // console.log("now: " + this.now() + "\t" + this.now() + "\t" + this.now());
+        this.filter.insert((c2s - s2c) / 2, this.now())
     }
 
     now() {
@@ -578,11 +706,10 @@ class TimeProvider {
     }
 
     serverTime(localTimeMs: number) {
-        return localTimeMs + this.diff;
+        return localTimeMs + this.filter.getOffset(localTimeMs)
     }
 
-    diffBuffer: Array<number> = new Array<number>();
-    diff: number = 0;
+    private filter = new KalmanTimeFilter()
     ctx?: AudioContext;
 }
 
