@@ -309,6 +309,16 @@ export default function SnapWeb() {
   }
 
   useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && snapstreamRef.current) {
+        snapstreamRef.current.resync();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, []);
+
+  useEffect(() => {
     if (isPlaying) {
       console.debug("isPlaying changed to true");
       audioRef.current.src = silence;
