@@ -39,6 +39,14 @@ export async function calibrate(
     });
 
     // --- Mic capture via a separate native AudioContext ---
+    if (!navigator.mediaDevices?.getUserMedia) {
+        snapStream.stopReferenceTap();
+        throw new CalibrationError(
+            'Microphone access requires a secure connection (HTTPS). ' +
+            'Open this page over HTTPS and try again.',
+        );
+    }
+
     let micStream: MediaStream;
     try {
         micStream = await navigator.mediaDevices.getUserMedia({
@@ -117,10 +125,10 @@ export async function calibrate(
         { channelData: [refTrimmed], samplesDecoded: refTrimmed.length },
     );
 
-    if (result.correlation < 0.3) {
+    if (!isFinite(result.correlation) || result.correlation < 0.3) {
         throw new CalibrationError(
-            `Correlation too low (${(result.correlation * 100).toFixed(0)}%). ` +
-            'Hold this device closer to the other speaker, or check that music is playing.',
+            'Could not match audio — make sure music is playing on the target device ' +
+            'and hold this device close to its speaker.',
         );
     }
 
