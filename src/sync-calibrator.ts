@@ -4,6 +4,11 @@ import { SnapStream } from './snapstream';
 export interface CalibrationResult {
     offsetMs: number;
     correlation: number;
+    /** Raw mono mic capture — for debug playback only. */
+    micMono: Float32Array;
+    /** Reference window used for correlation — for debug playback only. */
+    refWindow: Float32Array;
+    sampleRate: number;
 }
 
 export class CalibrationError extends Error {
@@ -143,5 +148,5 @@ export async function calibrate(
     const rawOffsetSamples = result.sampleOffset - windowStart;
     const offsetMs = (rawOffsetSamples / sampleRate) * 1000;
 
-    return { offsetMs, correlation: result.correlation };
+    return { offsetMs, correlation: result.correlation, micMono, refWindow, sampleRate };
 }

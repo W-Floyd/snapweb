@@ -2,15 +2,26 @@ import { useState, useRef, useCallback } from 'react';
 import {
     Box, Button, CircularProgress, LinearProgress, Typography, Alert,
 } from '@mui/material';
-import { GraphicEq as GraphicEqIcon } from '@mui/icons-material';
+import { GraphicEq as GraphicEqIcon, PlayArrow as PlayArrowIcon } from '@mui/icons-material';
 import { SnapStream } from '../snapstream';
-import { calibrate, CalibrationError } from '../sync-calibrator';
+import { calibrate, CalibrationError, CalibrationResult } from '../sync-calibrator';
+
+function playMono(samples: Float32Array, sampleRate: number) {
+    const ctx = new AudioContext({ sampleRate });
+    const buf = ctx.createBuffer(1, samples.length, sampleRate);
+    buf.getChannelData(0).set(samples);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start();
+    src.onended = () => ctx.close();
+}
 
 type State =
     | { kind: 'idle' }
     | { kind: 'recording'; elapsed: number; total: number }
     | { kind: 'correlating' }
-    | { kind: 'result'; offsetMs: number; correlation: number }
+    | { kind: 'result' } & CalibrationResult
     | { kind: 'error'; message: string };
 
 const DURATION_MS = 4000;
@@ -50,7 +61,7 @@ export default function SyncCalibrator({ snapStream, currentLatencyMs, onCalibra
             setState({ kind: 'correlating' });
             await new Promise((r) => setTimeout(r, 50));
             if (abortRef.current) return;
-            setState({ kind: 'result', ...result });
+            setState({ kind: 'result' as const, ...result });
         } catch (err) {
             if (abortRef.current) return;
             setState({
@@ -133,7 +144,7 @@ export default function SyncCalibrator({ snapStream, currentLatencyMs, onCalibra
                             ? 'Target is playing late — latency will increase to advance it.'
                             : 'Target is playing early — latency will decrease to delay it.'}
                     </Typography>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                         <Button variant="contained" size="small" onClick={() => apply(state.offsetMs)}>
                             Apply
                         </Button>
@@ -142,6 +153,14 @@ export default function SyncCalibrator({ snapStream, currentLatencyMs, onCalibra
                         </Button>
                         <Button size="small" onClick={run}>
                             Retry
+                        </Button>
+                        <Button size="small" startIcon={<PlayArrowIcon />}
+                            onClick={() => playMono(state.micMono, state.sampleRate)}>
+                            Mic
+                        </Button>
+                        <Button size="small" startIcon={<PlayArrowIcon />}
+                            onClick={() => playMono(state.refWindow, state.sampleRate)}>
+                            Ref
                         </Button>
                     </Box>
                 </Box>
