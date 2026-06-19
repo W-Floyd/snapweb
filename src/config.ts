@@ -34,6 +34,10 @@ function getPersistentValue(key: string, defaultValue: string = ""): string {
   return defaultValue;
 }
 
+// ?host=ws://192.168.1.1:1780 persists the server URL on first load.
+const hostParam = new URLSearchParams(window.location.search).get('host');
+if (hostParam) setPersistentValue(keys.snapserver_host, hostParam);
+
 const config = {
   get baseUrl() {
     const defaultUrl = host ? (window.location.protocol === "https:" ? "wss://" : "ws://") + host : "";
