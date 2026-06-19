@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Server from './Server';
 import AboutDialog from './AboutDialog';
 import SettingsDialog from './Settings';
@@ -152,52 +152,20 @@ export default function SnapWeb() {
     };
   }, [serverUrl]);
 
-  function handleChange(snapserver: Snapcast.Server) {
-    console.debug("Update: " + server.groups.length + " => " + snapserver.groups.length);
-    setServer(snapserver);
-    setUpdate(u => u + 1);
-    updateMediaSession();
-  }
-
   function shouldAutoplay(): boolean {
     return (autoPlay || (document.location.hash.match(/autoplay/) !== null));
   }
-
-  snapControlRef.current.onChange = (_control: SnapControl, server: Snapcast.Server) => handleChange(server);
-  snapControlRef.current.onConnectionChanged = (_control: SnapControl, connected: boolean, error?: string) => {
-    console.log("Connection state changed: " + connected + ", error: " + error);
-    if (!connected) {
-      setIsPlaying(false);
-      setServer(new Snapcast.Server());
-      if (error)
-        setConnectError(error);
-    }
-    setConnected(connected);
-    if (shouldAutoplay()) {
-      if (autoplayPolicy === "allowed") {
-        console.debug("autoplayPolicy:", autoplayPolicy)
-        setIsPlaying(true);
-      } else if (autoplayPolicy === "unknown") {
-        console.warn("autoplayPolicy unknown, attempting autoplay anyway")
-        setIsPlaying(true);
-      } else {
-        console.warn("autoplayPolicy:", autoplayPolicy)
-        setAutoplaySuccess(false)
-      }
-    }
-  };
-
 
   function getMyStreamId(): string {
     try {
       const group = snapControlRef.current.getGroupFromClient(SnapStream.getClientId());
       return snapControlRef.current.getStream(group.stream_id).id;
-    } catch (e) {
+    } catch {
       return "";
     }
   }
 
-  function updateMediaSession() {
+  const updateMediaSession = useCallback(() => {
     // https://developers.google.com/web/updates/2017/02/media-session
     // https://github.com/googlechrome/samples/tree/gh-pages/media-session
     // https://googlechrome.github.io/samples/media-session/audio.html
@@ -258,7 +226,7 @@ export default function SnapWeb() {
       mediaSession.setActionHandler('nexttrack', properties.canGoNext ? () => { snapControlRef.current.control(streamId, 'next') } : null);
       try {
         mediaSession.setActionHandler('stop', properties.canControl ? () => { snapControlRef.current.control(streamId, 'stop') } : null);
-      } catch (error) {
+      } catch {
         console.debug('Warning! The "stop" media session action is not supported.');
       }
       const defaultSkipTime: number = 10; // Time to skip in seconds by default
@@ -278,7 +246,7 @@ export default function SnapWeb() {
           const position: number = event.seekTime || 0;
           snapControlRef.current.control(streamId, 'setPosition', { 'position': position })
         } : null);
-      } catch (error) {
+      } catch {
         console.debug('Warning! The "seekto" media session action is not supported.');
       }
 
@@ -305,7 +273,36 @@ export default function SnapWeb() {
       return;
     }
 
-  }
+  }, []);
+
+  useEffect(() => {
+    snapControlRef.current.onChange = (_control, snapserver) => {
+      setServer(snapserver);
+      setUpdate(u => u + 1);
+      if (snapstreamRef.current) updateMediaSession();
+    };
+    snapControlRef.current.onConnectionChanged = (_control, connected, error) => {
+      if (!connected) {
+        setIsPlaying(false);
+        setServer(new Snapcast.Server());
+        if (error)
+          setConnectError(error);
+      }
+      setConnected(connected);
+      if (autoPlay || document.location.hash.match(/autoplay/) !== null) {
+        if (autoplayPolicy === "allowed") {
+          console.debug("autoplayPolicy:", autoplayPolicy);
+          setIsPlaying(true);
+        } else if (autoplayPolicy === "unknown") {
+          console.warn("autoplayPolicy unknown, attempting autoplay anyway");
+          setIsPlaying(true);
+        } else {
+          console.warn("autoplayPolicy:", autoplayPolicy);
+          setAutoplaySuccess(false);
+        }
+      }
+    };
+  }, [autoPlay, updateMediaSession]);
 
   useEffect(() => {
     const onVisibilityChange = () => {

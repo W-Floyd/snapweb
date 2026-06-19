@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { useState, useLayoutEffect } from 'react';
+import { useState } from 'react';
 import Client from './Client';
 import logo from '../assets/logo192.png';
 import { SnapControl, Snapcast } from '../snapcontrol';
@@ -34,26 +34,7 @@ export default function Group(props: GroupProps) {
   const [clients, setClients] = useState<GroupClient[]>([]);
   const [streamId, setStreamId] = useState("");
   const [deletedClients, setDeletedClients] = useState<Snapcast.Client[]>([]);
-  const [volume, setVolume] = useState(0);
   const groupVolumeChange = useRef<GroupVolumeChange>({ volumeEntered: true, client_volumes: new Map<string, number>(), group_volume: 0 });
-
-  function updateVolume() {
-    const clients = getClients();
-    if (clients.length === 0) {
-      setVolume(0);
-      return;
-    }
-    let volume = 0;
-    for (const client of clients)
-      volume += client.config.volume.percent;
-    volume /= clients.length;
-    setVolume(volume);
-  }
-
-  useLayoutEffect(() => {
-    console.debug("useLayoutEffect");
-    updateVolume();
-  });
 
   function handleSettingsClicked(_event: React.MouseEvent<HTMLButtonElement>) {
     console.debug("handleSettingsClicked");
@@ -118,9 +99,8 @@ export default function Group(props: GroupProps) {
     setUpdate(u => u + 1);
   }
 
-  function handleClientVolumeChange(client: Snapcast.Client) {
-    console.debug("handleClientVolumeChange: " + client.getName());
-    updateVolume();
+  function handleClientVolumeChange(_client: Snapcast.Client) {
+    setUpdate(u => u + 1);
   }
 
   function handleSnackbarClose(client: Snapcast.Client, undo: boolean) {
@@ -174,7 +154,7 @@ export default function Group(props: GroupProps) {
       props.snapcontrol.setVolume(client.id, new_volume);
     }
 
-    setVolume(value);
+    setUpdate(u => u + 1);
   }
 
   function handleVolumeChangeCommitted(value: number) {
@@ -222,11 +202,13 @@ export default function Group(props: GroupProps) {
   }
 
   // console.debug("Render Group " + props.group.id);
-  const groupClients = [];
-
-  for (const client of getClients()) {
-    groupClients.push(<Client key={client.id} client={client} snapcontrol={props.snapcontrol} onDelete={() => { handleClientDelete(client) }} onVolumeChange={() => { handleClientVolumeChange(client) }} />);
-  }
+  const visibleClients = getClients();
+  const groupVolume = visibleClients.length > 0
+    ? visibleClients.reduce((sum, c) => sum + c.config.volume.percent, 0) / visibleClients.length
+    : 0;
+  const groupClients = visibleClients.map(client =>
+    <Client key={client.id} client={client} snapcontrol={props.snapcontrol} onDelete={() => { handleClientDelete(client) }} onVolumeChange={() => { handleClientVolumeChange(client) }} />
+  );
   if (groupClients.length === 0)
     return (<div>{snackbar()}</div>);
 
@@ -234,13 +216,6 @@ export default function Group(props: GroupProps) {
   const artUrl = stream?.properties.metadata?.artUrl || logo;
   const title = stream?.properties.metadata?.title || "Unknown Title";
   const artist: string = (stream?.properties.metadata?.artist) ? stream!.properties.metadata.artist.join(', ') : "Unknown Artist";
-
-  console.debug("Art URL: " + artUrl);
-
-  const allClients = [];
-  for (const group of props.server.groups)
-    for (const client of group.clients)
-      allClients.push(client);
 
   return (
     <div>
@@ -284,7 +259,7 @@ export default function Group(props: GroupProps) {
                   <SkipPreviousIcon />
                 </IconButton>
                 <IconButton aria-label="play/pause" onClick={() => { handlePlayPauseClicked(); }}>
-                  {props.server.getStream(props.group.stream_id)?.properties.playbackStatus === "playing" ? <PauseIcon /> : <PlayArrowIcon />}
+                  {stream?.properties.playbackStatus === "playing" ? <PauseIcon /> : <PlayArrowIcon />}
                   {/* sx={{ height: 32, width: 32 }} /> */}
                 </IconButton>
                 <IconButton aria-label="next" onClick={() => { props.snapcontrol.control(props.group.stream_id, 'next') }}>
@@ -316,7 +291,7 @@ export default function Group(props: GroupProps) {
               <IconButton aria-label="Mute" onClick={() => { handleMuteClicked() }}>
                 {props.group.muted ? <VolumeOffIcon /> : <VolumeUpIcon />}
               </IconButton>
-              <Slider aria-label="Volume" color="secondary" min={0} max={100} size="small" key={"slider-" + props.group.id} value={volume} onChange={(_, value) => { handleVolumeChange(value as number) }} onChangeCommitted={(_, value) => { handleVolumeChangeCommitted(value as number) }} />
+              <Slider aria-label="Volume" color="secondary" min={0} max={100} size="small" key={"slider-" + props.group.id} value={groupVolume} onChange={(_, value) => { handleVolumeChange(value as number) }} onChangeCommitted={(_, value) => { handleVolumeChangeCommitted(value as number) }} />
             </Stack>
           }
           {groupClients.length === 1 &&

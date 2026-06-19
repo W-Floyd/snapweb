@@ -186,24 +186,24 @@ class JsonMessage extends BaseMessage {
     }
 
     serialize(): ArrayBuffer {
-        const buffer = super.serialize();
+        this._encoded = null; // force fresh encode for updated this.json
+        const buffer = super.serialize(); // calls getSize() → encodes once, caches in _encoded
         const view = new DataView(buffer);
-        const encoder = new TextEncoder();
-        const encoded = encoder.encode(JSON.stringify(this.json));
         // size must be the UTF-8 byte length, not the UTF-16 string length
-        view.setUint32(26, encoded.length, true);
-        new Uint8Array(buffer).set(encoded, 30);
+        view.setUint32(26, this._encoded!.length, true);
+        new Uint8Array(buffer).set(this._encoded!, 30);
+        this._encoded = null;
         return buffer;
     }
 
     getSize() {
-        const encoder = new TextEncoder();
-        const encoded = encoder.encode(JSON.stringify(this.json));
-        return encoded.length + 4;
-        // return JSON.stringify(this.json).length;
+        if (!this._encoded)
+            this._encoded = new TextEncoder().encode(JSON.stringify(this.json));
+        return this._encoded.length + 4;
     }
 
     json: any;
+    private _encoded: Uint8Array | null = null;
 }
 
 
@@ -292,16 +292,14 @@ class PcmChunkMessage extends BaseMessage {
         // console.log("ts: " + this.timestamp.sec + " " + this.timestamp.usec + ", payload: " + this.payloadSize + ", len: " + this.payload.byteLength);
     }
 
-    readFrames(frames: number): ArrayBuffer {
+    readFrames(frames: number): Uint8Array {
         let frameCnt = frames;
         const frameSize = this.sampleFormat.frameSize();
         if (this.idx + frames > this.payloadSize() / frameSize)
             frameCnt = (this.payloadSize() / frameSize) - this.idx;
         const begin = this.idx * frameSize;
         this.idx += frameCnt;
-        const end = begin + frameCnt * frameSize;
-        // console.log("readFrames: " + frames + ", result: " + frameCnt + ", begin: " + begin + ", end: " + end + ", payload: " + this.payload.byteLength);
-        return this.payload.slice(begin, end);
+        return new Uint8Array(this.payload, begin, frameCnt * frameSize);
     }
 
     getFrameCount(): number {
@@ -462,14 +460,14 @@ class AudioStream {
                 // console.debug("frames: " + frames + ", readFrames: " + readFrames + ", addFrames: " + addFrames + ", everyN: " + everyN);
                 while ((read < readFrames) && this.chunk) {
                     const pcmChunk = this.chunk as PcmChunkMessage;
-                    const pcmBuffer = pcmChunk.readFrames(readFrames - read);
+                    const pcmView = pcmChunk.readFrames(readFrames - read);
                     // Signed PCM peaks at 2^(bits-1) — divide by that to get [-1, 1)
                     const normalize: number = 2 ** (pcmChunk.sampleFormat.bits - 1);
-                    let payload: any;
+                    let payload: Int32Array | Int16Array;
                     if (pcmChunk.sampleFormat.bits >= 24)
-                        payload = new Int32Array(pcmBuffer);
+                        payload = new Int32Array(pcmView.buffer, pcmView.byteOffset, pcmView.byteLength >> 2);
                     else
-                        payload = new Int16Array(pcmBuffer);
+                        payload = new Int16Array(pcmView.buffer, pcmView.byteOffset, pcmView.byteLength >> 1);
                     // console.debug("readFrames: " + (frames - read) + ", read: " + pcmBuffer.byteLength + ", payload: " + payload.length);
                     // read += (pcmBuffer.byteLength / this.sampleFormat.frameSize());
                     for (let i = 0; i < payload.length; i += 2) {
@@ -845,8 +843,7 @@ class WasmAudioDecoder extends Decoder {
         }
 
         chunk.sampleFormat = this.sampleFormat;
-        chunk.clearPayload();
-        chunk.addPayload(buffer);
+        chunk.payload = buffer;
         return chunk;
     }
 
