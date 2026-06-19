@@ -39,6 +39,10 @@ export default function Group(props: GroupProps) {
 
   function updateVolume() {
     const clients = getClients();
+    if (clients.length === 0) {
+      setVolume(0);
+      return;
+    }
     let volume = 0;
     for (const client of clients)
       volume += client.config.volume.percent;
