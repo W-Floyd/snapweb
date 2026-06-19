@@ -1,4 +1,5 @@
 import { AudioContext, IAudioBuffer, IAudioContext, IAudioBufferSourceNode, IGainNode } from 'standardized-audio-context'
+import { config } from './config'
 
 // Decoders are loaded on demand via dynamic import so only the codec in use
 // is fetched. Type-only imports are erased at compile time.
@@ -345,6 +346,8 @@ class AudioStream {
     constructor(public _timeProvider: TimeProvider, public _sampleFormat: SampleFormat, public _bufferMs: number) {
     }
 
+    refTapCallback: ((left: Float32Array, right: Float32Array) => void) | null = null;
+
     chunks: Array<PcmChunkMessage> = new Array<PcmChunkMessage>();
 
     setVolume(percent: number, muted: boolean) {
@@ -501,6 +504,10 @@ class AudioStream {
             console.log("Failed to get chunk, read: " + read + "/" + frames + ", chunks left: " + this.chunks.length);
             left.fill(0, pos);
             right.fill(0, pos);
+        }
+
+        if (this.refTapCallback) {
+            this.refTapCallback(new Float32Array(left), new Float32Array(right));
         }
 
         // copyToChannel is not supported by Safari
@@ -1154,6 +1161,33 @@ class SnapStream {
             }
         }, SnapStream.BURST_INTERVAL_MS);
         this.burstHandle = burst;
+    }
+
+    get sampleRate(): number {
+        return this.sampleFormat?.rate ?? this.ctx.sampleRate;
+    }
+
+    public startReferenceTap(callback: (left: Float32Array, right: Float32Array) => void) {
+        if (this.stream) this.stream.refTapCallback = callback;
+    }
+
+    public stopReferenceTap() {
+        if (this.stream) this.stream.refTapCallback = null;
+    }
+
+    get localOffsetMs(): number {
+        return config.localOffsetMs;
+    }
+
+    set localOffsetMs(ms: number) {
+        config.localOffsetMs = ms;
+    }
+
+    public muteOutput(muted: boolean) {
+        if (!this.gainNode || !this.serverSettings) return;
+        this.gainNode.gain.value = (muted || this.serverSettings.muted)
+            ? 0
+            : this.serverSettings.volumePercent / 100;
     }
 
     public stop() {

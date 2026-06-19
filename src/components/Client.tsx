@@ -1,14 +1,17 @@
 import React from 'react';
 import { useState } from 'react';
 import { SnapControl, Snapcast } from '../snapcontrol';
-import { Box, Button, Grid, InputAdornment, Menu, MenuItem, Slider, Stack, TextField, Typography, IconButton } from '@mui/material';
+import { SnapStream } from '../snapstream';
+import { Box, Button, Divider, Grid, InputAdornment, Menu, MenuItem, Slider, Stack, TextField, Typography, IconButton } from '@mui/material';
 import { Dialog, DialogActions, DialogContent, DialogTitle } from '@mui/material';
 import { VolumeUp as VolumeUpIcon, VolumeOff as VolumeOffIcon, MoreVert as MoreVertIcon } from '@mui/icons-material';
+import SyncCalibrator from './SyncCalibrator';
 
 
 type ClientProps = {
   client: Snapcast.Client;
-  snapcontrol: SnapControl
+  snapcontrol: SnapControl;
+  snapStream: SnapStream | null;
   onDelete: () => void;
   onVolumeChange: () => void;
 };
@@ -201,6 +204,16 @@ export default function Client(props: ClientProps) {
               }
             }}
           />
+          {props.snapStream && (
+            <>
+              <Divider sx={{ mt: 1 }} />
+              <SyncCalibrator
+                snapStream={props.snapStream}
+                currentLatencyMs={tmpLatency}
+                onCalibrated={(newLatency) => handleLatencyChange(newLatency)}
+              />
+            </>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { handleDetailsClose(false) }}>Cancel</Button>

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Client from './Client';
 import logo from '../assets/logo192.png';
 import { SnapControl, Snapcast } from '../snapcontrol';
+import { SnapStream } from '../snapstream';
 import { Alert, Box, Button, Card, CardMedia, Checkbox, Divider, FormControl, FormControlLabel, FormGroup, Grid, MenuItem, Select, Slider, Snackbar, Stack, TextField, Typography, IconButton } from '@mui/material';
 import { Dialog, DialogActions, DialogContent, DialogTitle } from '@mui/material';
 import { VolumeUp as VolumeUpIcon, VolumeOff as VolumeOffIcon, PlayArrow as PlayArrowIcon, Pause as PauseIcon, SkipPrevious as SkipPreviousIcon, SkipNext as SkipNextIcon, Settings as SettingsIcon } from '@mui/icons-material';
@@ -18,6 +19,7 @@ type GroupProps = {
   server: Snapcast.Server
   group: Snapcast.Group;
   snapcontrol: SnapControl;
+  snapStream: SnapStream | null;
   showOffline: boolean;
   autoPlay: boolean;
 };
@@ -207,7 +209,7 @@ export default function Group(props: GroupProps) {
     ? visibleClients.reduce((sum, c) => sum + c.config.volume.percent, 0) / visibleClients.length
     : 0;
   const groupClients = visibleClients.map(client =>
-    <Client key={client.id} client={client} snapcontrol={props.snapcontrol} onDelete={() => { handleClientDelete(client) }} onVolumeChange={() => { handleClientVolumeChange(client) }} />
+    <Client key={client.id} client={client} snapcontrol={props.snapcontrol} snapStream={props.snapStream} onDelete={() => { handleClientDelete(client) }} onVolumeChange={() => { handleClientVolumeChange(client) }} />
   );
   if (groupClients.length === 0)
     return (<div>{snackbar()}</div>);

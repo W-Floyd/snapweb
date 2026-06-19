@@ -7,7 +7,8 @@ const keys = {
   snapserver_host: "snapserver.host",
   theme: "theme",
   showoffline: "showoffline",
-  autoPlay: "autoPlay"
+  autoPlay: "autoPlay",
+  localOffsetMs: "localOffsetMs",
 }
 
 enum Theme {
@@ -63,7 +64,13 @@ const config = {
   },
   set autoPlay(value: boolean) {
     setPersistentValue(keys.autoPlay, String(value));
-  }
+  },
+  get localOffsetMs() {
+    return parseFloat(getPersistentValue(keys.localOffsetMs, "0")) || 0;
+  },
+  set localOffsetMs(value: number) {
+    setPersistentValue(keys.localOffsetMs, String(value));
+  },
 };
 
 

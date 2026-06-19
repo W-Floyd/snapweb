@@ -457,7 +457,7 @@ export default function SnapWeb() {
         >
           {list()}
         </Drawer>
-        <Server server={server} snapcontrol={snapControlRef.current} showOffline={showOffline} autoPlay={autoPlay} />
+        <Server server={server} snapcontrol={snapControlRef.current} snapStream={snapstreamRef.current} showOffline={showOffline} autoPlay={autoPlay} />
         {snackbar()}
         <AboutDialog open={aboutOpen} onClose={() => { setAboutOpen(false); }} />
         <SettingsDialog open={settingsOpen} onClose={(apply: boolean) => {
