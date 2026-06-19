@@ -1053,12 +1053,12 @@ class SnapStream {
             hello.uniqueId = SnapStream.getClientId();
 
             this.sendMessage(hello);
-            this.syncTime();
-            this.syncHandle = window.setInterval(() => this.syncTime(), 1000);
+            this.startSyncLoop();
         }
         this.streamsocket.onerror = (ev) => { console.error('error:', ev); };
         this.streamsocket.onclose = () => {
             window.clearInterval(this.syncHandle);
+            window.clearInterval(this.burstHandle);
             console.info('connection lost, reconnecting in 1s');
             setTimeout(() => this.connect(), 1000);
         }
@@ -1169,8 +1169,35 @@ class SnapStream {
         }
     }
 
+    // Call after page visibility is restored (e.g. returning from homescreen).
+    // Resets filter state and fires a quick-sync burst so the filter
+    // re-converges in ~1s instead of waiting for the steady-state interval.
+    public resync() {
+        this.timeProvider.reset();
+        this.ctx.resume();
+        this.startSyncLoop();
+    }
+
+    // Fire BURST_COUNT syncs every BURST_INTERVAL_MS, then settle to
+    // STEADY_INTERVAL_MS. Mirrors the embedded snapclient startup behaviour.
+    private startSyncLoop() {
+        window.clearInterval(this.syncHandle);
+        window.clearInterval(this.burstHandle);
+
+        let sent = 0;
+        const burst = window.setInterval(() => {
+            this.syncTime();
+            if (++sent >= SnapStream.BURST_COUNT) {
+                window.clearInterval(burst);
+                this.syncHandle = window.setInterval(() => this.syncTime(), SnapStream.STEADY_INTERVAL_MS);
+            }
+        }, SnapStream.BURST_INTERVAL_MS);
+        this.burstHandle = burst;
+    }
+
     public stop() {
         window.clearInterval(this.syncHandle);
+        window.clearInterval(this.burstHandle);
         this.stopAudio();
         if (this.streamsocket.readyState === WebSocket.OPEN || this.streamsocket.readyState === WebSocket.CONNECTING) {
             this.streamsocket.onclose = () => { };
@@ -1204,6 +1231,10 @@ class SnapStream {
         this.playTime += this.bufferFrameCount / (this.sampleFormat as SampleFormat).rate;
     }
 
+    static readonly BURST_COUNT        = 10;   // quick syncs on connect/resync
+    static readonly BURST_INTERVAL_MS  = 100;  // ms between burst syncs
+    static readonly STEADY_INTERVAL_MS = 250;  // ms between steady-state syncs
+
     baseUrl: string;
     streamsocket!: WebSocket;
     playTime: number = 0;
@@ -1211,6 +1242,7 @@ class SnapStream {
     bufferDurationMs: number = 80; // 0;
     bufferFrameCount: number = 3844; // 9600; // 2400;//8192;
     syncHandle: number = -1;
+    burstHandle: number = -1;
     // ageBuffer: Array<number>;
     audioBuffers: Array<PlayBuffer> = new Array<PlayBuffer>();
     freeBuffers: Array<IAudioBuffer> = new Array<IAudioBuffer>();
