@@ -80,6 +80,7 @@ export async function calibrate(
     // Use a native AudioContext at the stream's sample rate so samples are
     // directly comparable with the reference without resampling arithmetic.
     const micCtx = new AudioContext({ sampleRate });
+    await micCtx.resume();
     const micSource = micCtx.createMediaStreamSource(micStream);
     // ScriptProcessorNode is deprecated but universally supported in browsers
     // and avoids the AudioWorklet module-file requirement. Calibration runs
