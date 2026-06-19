@@ -135,6 +135,10 @@ export async function calibrate(
             { micMono, refWindow: new Float32Array(0), sampleRate },
         );
     }
+    for (let i = 0; i < micMono.length; i++) micMono[i] /= micPeak;
+
+    const refPeak = refMono.reduce((m, s) => Math.max(m, Math.abs(s)), 0);
+    if (refPeak > 0) for (let i = 0; i < refMono.length; i++) refMono[i] /= refPeak;
 
     // synaudio requires the comparison to be shorter than the base so it can
     // slide it to find the best alignment. A fixed 2s window from the middle of
