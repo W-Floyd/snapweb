@@ -460,7 +460,8 @@ class AudioStream {
                 while ((read < readFrames) && this.chunk) {
                     const pcmChunk = this.chunk as PcmChunkMessage;
                     const pcmBuffer = pcmChunk.readFrames(readFrames - read);
-                    const normalize: number = 2 ** pcmChunk.sampleFormat.bits;
+                    // Signed PCM peaks at 2^(bits-1) — divide by that to get [-1, 1)
+                    const normalize: number = 2 ** (pcmChunk.sampleFormat.bits - 1);
                     let payload: any;
                     if (pcmChunk.sampleFormat.bits >= 24)
                         payload = new Int32Array(pcmBuffer);
