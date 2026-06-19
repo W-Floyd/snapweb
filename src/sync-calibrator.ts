@@ -35,6 +35,34 @@ function concat(chunks: Float32Array[]): Float32Array {
     return out;
 }
 
+// Bandpass filter via OfflineAudioContext (highpass + lowpass biquad chain).
+async function bandpass(samples: Float32Array, sampleRate: number, lowHz = 200, highHz = 8000): Promise<Float32Array> {
+    const ctx = new OfflineAudioContext(1, samples.length, sampleRate);
+    const buf = ctx.createBuffer(1, samples.length, sampleRate);
+    buf.getChannelData(0).set(samples);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = lowHz;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = highHz;
+    src.connect(hp);
+    hp.connect(lp);
+    lp.connect(ctx.destination);
+    src.start();
+    const rendered = await ctx.startRendering();
+    return new Float32Array(rendered.getChannelData(0));
+}
+
+function rmsNormalize(samples: Float32Array): void {
+    let sum = 0;
+    for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+    const rms = Math.sqrt(sum / samples.length);
+    if (rms > 0) for (let i = 0; i < samples.length; i++) samples[i] /= rms;
+}
+
 // Decode a Blob of encoded audio (webm/ogg/etc.) and resample to targetRate.
 async function decodeBlob(blob: Blob, targetRate: number): Promise<Float32Array> {
     const arrayBuffer = await blob.arrayBuffer();
@@ -147,31 +175,34 @@ export async function calibrate(
             { micMono, refWindow: new Float32Array(0), sampleRate },
         );
     }
-    for (let i = 0; i < micMono.length; i++) micMono[i] /= micPeak;
 
-    const refPeak = refMono.reduce((m, s) => Math.max(m, Math.abs(s)), 0);
-    if (refPeak > 0) for (let i = 0; i < refMono.length; i++) refMono[i] /= refPeak;
+    const micFiltered = await bandpass(micMono, sampleRate);
+    rmsNormalize(micFiltered);
+
+    const refFiltered = await bandpass(refMono, sampleRate);
+    rmsNormalize(refFiltered);
 
     // synaudio requires the comparison to be shorter than the base so it can
     // slide it to find the best alignment. A fixed 2s window from the middle of
     // the reference gives ~2s of searchable offset range with a 4s mic recording.
     // correlationSampleSize of ~1s gives synaudio enough musical structure for
     // reliable matching even with room reverb and noise.
-    const windowSamples = Math.min(Math.floor(sampleRate * 2), Math.floor(refMono.length * 0.6));
-    const windowStart   = Math.floor((refMono.length - windowSamples) / 2);
-    const refWindow     = refMono.slice(windowStart, windowStart + windowSamples);
+    const windowSamples  = Math.min(Math.floor(sampleRate * 2), Math.floor(refFiltered.length * 0.6));
+    const windowStart    = Math.floor((refFiltered.length - windowSamples) / 2);
+    const refWindow      = refFiltered.slice(windowStart, windowStart + windowSamples);
+    const refWindowRaw   = refMono.slice(windowStart, windowStart + windowSamples);
 
     const synAudio = new SynAudio({ correlationSampleSize: 44100, correlationThreshold: 0.3 });
     const result = await synAudio.sync(
-        { channelData: [micMono],   samplesDecoded: micMono.length },
-        { channelData: [refWindow], samplesDecoded: refWindow.length },
+        { channelData: [micFiltered], samplesDecoded: micFiltered.length },
+        { channelData: [refWindow],   samplesDecoded: refWindow.length },
     );
 
     if (!isFinite(result.correlation) || result.correlation < 0.3) {
         throw new CalibrationError(
             'Could not match audio — make sure music is playing on the target device ' +
             'and hold this device close to its speaker.',
-            { micMono, refWindow, sampleRate },
+            { micMono, refWindow: refWindowRaw, sampleRate },
         );
     }
 
@@ -184,5 +215,5 @@ export async function calibrate(
     const rawOffsetSamples = result.sampleOffset - windowStart;
     const offsetMs = (rawOffsetSamples / sampleRate) * 1000;
 
-    return { offsetMs, correlation: result.correlation, micMono, refWindow, sampleRate };
+    return { offsetMs, correlation: result.correlation, micMono, refWindow: refWindowRaw, sampleRate };
 }
