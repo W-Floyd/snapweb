@@ -20,23 +20,45 @@ export class CalibrationError extends Error {
         super(message);
         this.name = 'CalibrationError';
         if (captures) {
-            this.micMono   = captures.micMono;
-            this.refWindow = captures.refWindow;
+            this.micMono    = captures.micMono;
+            this.refWindow  = captures.refWindow;
             this.sampleRate = captures.sampleRate;
         }
     }
 }
 
-// Concatenates an array of Float32Array chunks into one.
 function concat(chunks: Float32Array[]): Float32Array {
     const total = chunks.reduce((n, c) => n + c.length, 0);
     const out = new Float32Array(total);
     let offset = 0;
-    for (const c of chunks) {
-        out.set(c, offset);
-        offset += c.length;
-    }
+    for (const c of chunks) { out.set(c, offset); offset += c.length; }
     return out;
+}
+
+// Decode a Blob of encoded audio (webm/ogg/etc.) and resample to targetRate.
+async function decodeBlob(blob: Blob, targetRate: number): Promise<Float32Array> {
+    const arrayBuffer = await blob.arrayBuffer();
+    const decodeCtx = new AudioContext();
+    let raw: AudioBuffer;
+    try {
+        raw = await decodeCtx.decodeAudioData(arrayBuffer);
+    } finally {
+        await decodeCtx.close();
+    }
+
+    if (raw.sampleRate === targetRate) {
+        return new Float32Array(raw.getChannelData(0));
+    }
+
+    // Resample to targetRate using OfflineAudioContext.
+    const targetLength = Math.ceil(raw.duration * targetRate);
+    const offlineCtx = new OfflineAudioContext(1, targetLength, targetRate);
+    const src = offlineCtx.createBufferSource();
+    src.buffer = raw;
+    src.connect(offlineCtx.destination);
+    src.start();
+    const resampled = await offlineCtx.startRendering();
+    return new Float32Array(resampled.getChannelData(0));
 }
 
 export async function calibrate(
@@ -48,11 +70,9 @@ export async function calibrate(
 
     // --- Reference tap: collect what getNextBuffer produces (pre-gain, float32) ---
     const refChunks: Float32Array[] = [];
-    snapStream.startReferenceTap((left) => {
-        refChunks.push(left);
-    });
+    snapStream.startReferenceTap((left) => { refChunks.push(left); });
 
-    // --- Mic capture via a separate native AudioContext ---
+    // --- Mic capture via MediaRecorder (reliable on all browsers incl. Firefox) ---
     if (!navigator.mediaDevices?.getUserMedia) {
         snapStream.stopReferenceTap();
         throw new CalibrationError(
@@ -64,37 +84,17 @@ export async function calibrate(
     let micStream: MediaStream;
     try {
         micStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false,
-            },
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
         });
     } catch (err) {
         snapStream.stopReferenceTap();
-        throw new CalibrationError(
-            err instanceof Error ? err.message : 'Microphone access denied',
-        );
+        throw new CalibrationError(err instanceof Error ? err.message : 'Microphone access denied');
     }
 
-    // Use a native AudioContext at the stream's sample rate so samples are
-    // directly comparable with the reference without resampling arithmetic.
-    const micCtx = new AudioContext({ sampleRate });
-    await micCtx.resume();
-    const micSource = micCtx.createMediaStreamSource(micStream);
-    // ScriptProcessorNode is deprecated but universally supported in browsers
-    // and avoids the AudioWorklet module-file requirement. Calibration runs
-    // only briefly (≤10s) so the deprecation trade-off is acceptable.
-    const micProcessor = micCtx.createScriptProcessor(4096, 1, 1);
-    const micChunks: Float32Array[] = [];
-
-    micProcessor.onaudioprocess = (e) => {
-        micChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-    };
-
-    micSource.connect(micProcessor);
-    // Must be connected to a destination or browsers won't fire onaudioprocess.
-    micProcessor.connect(micCtx.destination);
+    const mediaRecorder = new MediaRecorder(micStream);
+    const micBlobs: Blob[] = [];
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) micBlobs.push(e.data); };
+    mediaRecorder.start();
 
     // Wait for the recording window.
     await new Promise<void>((resolve) => {
@@ -102,43 +102,41 @@ export async function calibrate(
         const tick = () => {
             const elapsed = performance.now() - startMs;
             onProgress?.(elapsed, durationMs);
-            if (elapsed >= durationMs) {
-                resolve();
-            } else {
-                requestAnimationFrame(tick);
-            }
+            elapsed >= durationMs ? resolve() : requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
     });
 
     // Stop capture.
     snapStream.stopReferenceTap();
-    micProcessor.disconnect();
-    micSource.disconnect();
+    await new Promise<void>((resolve) => { mediaRecorder.onstop = () => resolve(); mediaRecorder.stop(); });
     micStream.getTracks().forEach((t) => t.stop());
-    await micCtx.close();
 
     const refMono = concat(refChunks);
-    const micMono = concat(micChunks);
+
+    if (micBlobs.length === 0) {
+        throw new CalibrationError('No audio was recorded from the microphone.');
+    }
+
+    const micBlob = new Blob(micBlobs, { type: micBlobs[0].type });
+    const micMono = await decodeBlob(micBlob, sampleRate);
 
     if (refMono.length < sampleRate || micMono.length < sampleRate) {
         throw new CalibrationError('Not enough audio captured. Is music playing?');
     }
 
     // synaudio requires the comparison to be shorter than the base so it can
-    // slide it to find the best alignment. Taking a fixed 2s window from the
-    // middle of the reference (rather than trimming both ends) maximises the
-    // search range: with a 4s mic recording, this gives ~2s of searchable
-    // offset range (±1s). A larger correlationSampleSize (~1s) gives synaudio
-    // enough musical structure for reliable matching even with reverb/noise.
+    // slide it to find the best alignment. A fixed 2s window from the middle of
+    // the reference gives ~2s of searchable offset range with a 4s mic recording.
+    // correlationSampleSize of ~1s gives synaudio enough musical structure for
+    // reliable matching even with room reverb and noise.
     const windowSamples = Math.min(Math.floor(sampleRate * 2), Math.floor(refMono.length * 0.6));
-    const windowStart = Math.floor((refMono.length - windowSamples) / 2);
-    const refWindow = refMono.slice(windowStart, windowStart + windowSamples);
+    const windowStart   = Math.floor((refMono.length - windowSamples) / 2);
+    const refWindow     = refMono.slice(windowStart, windowStart + windowSamples);
 
     const synAudio = new SynAudio({ correlationSampleSize: 44100, correlationThreshold: 0.3 });
-
     const result = await synAudio.sync(
-        { channelData: [micMono],  samplesDecoded: micMono.length },
+        { channelData: [micMono],   samplesDecoded: micMono.length },
         { channelData: [refWindow], samplesDecoded: refWindow.length },
     );
 
@@ -151,9 +149,9 @@ export async function calibrate(
     }
 
     // result.sampleOffset: where refWindow[0] aligns within micMono.
-    // refWindow[0] is refMono[windowStart], so the wall-clock offset is:
+    // refWindow[0] === refMono[windowStart], so the wall-clock offset is:
     //   offsetSamples = sampleOffset - windowStart
-    // Positive → target played that content later than snapweb → target is BEHIND
+    // Positive → target played content later than snapweb → target is BEHIND
     // Negative → target is AHEAD
     // Caller applies: newLatency = currentLatency + offsetMs
     const rawOffsetSamples = result.sampleOffset - windowStart;
