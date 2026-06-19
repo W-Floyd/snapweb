@@ -91,6 +91,18 @@ export async function calibrate(
         throw new CalibrationError(err instanceof Error ? err.message : 'Microphone access denied');
     }
 
+    // Delay before starting capture so any tap/click sound from pressing the
+    // button has faded before we record.
+    const PRE_DELAY_MS = 500;
+    await new Promise<void>((resolve) => {
+        const startMs = performance.now();
+        const tick = () => {
+            if (onProgress) onProgress(0, durationMs);
+            if (performance.now() - startMs >= PRE_DELAY_MS) resolve(); else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    });
+
     const mediaRecorder = new MediaRecorder(micStream);
     const micBlobs: Blob[] = [];
     mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) micBlobs.push(e.data); };
