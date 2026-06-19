@@ -22,7 +22,7 @@ type State =
     | { kind: 'recording'; elapsed: number; total: number }
     | { kind: 'correlating' }
     | { kind: 'result' } & CalibrationResult
-    | { kind: 'error'; message: string };
+    | { kind: 'error'; message: string; micMono?: Float32Array; refWindow?: Float32Array; sampleRate?: number };
 
 const DURATION_MS = 4000;
 
@@ -64,9 +64,13 @@ export default function SyncCalibrator({ snapStream, currentLatencyMs, onCalibra
             setState({ kind: 'result' as const, ...result });
         } catch (err) {
             if (abortRef.current) return;
+            const ce = err instanceof CalibrationError ? err : null;
             setState({
                 kind: 'error',
-                message: err instanceof CalibrationError ? err.message : String(err),
+                message: ce ? ce.message : String(err),
+                micMono:    ce?.micMono,
+                refWindow:  ce?.refWindow,
+                sampleRate: ce?.sampleRate,
             });
         } finally {
             snapStream.muteOutput(false);
@@ -169,9 +173,21 @@ export default function SyncCalibrator({ snapStream, currentLatencyMs, onCalibra
             {state.kind === 'error' && (
                 <Box>
                     <Alert severity="error" sx={{ mb: 1 }}>{state.message}</Alert>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                         <Button size="small" onClick={run}>Retry</Button>
                         <Button size="small" onClick={() => setState({ kind: 'idle' })}>Dismiss</Button>
+                        {state.micMono && state.sampleRate && (
+                            <Button size="small" startIcon={<PlayArrowIcon />}
+                                onClick={() => playMono(state.micMono!, state.sampleRate!)}>
+                                Mic
+                            </Button>
+                        )}
+                        {state.refWindow && state.sampleRate && (
+                            <Button size="small" startIcon={<PlayArrowIcon />}
+                                onClick={() => playMono(state.refWindow!, state.sampleRate!)}>
+                                Ref
+                            </Button>
+                        )}
                     </Box>
                 </Box>
             )}

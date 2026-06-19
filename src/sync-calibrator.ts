@@ -12,9 +12,18 @@ export interface CalibrationResult {
 }
 
 export class CalibrationError extends Error {
-    constructor(message: string) {
+    micMono?: Float32Array;
+    refWindow?: Float32Array;
+    sampleRate?: number;
+
+    constructor(message: string, captures?: { micMono: Float32Array; refWindow: Float32Array; sampleRate: number }) {
         super(message);
         this.name = 'CalibrationError';
+        if (captures) {
+            this.micMono   = captures.micMono;
+            this.refWindow = captures.refWindow;
+            this.sampleRate = captures.sampleRate;
+        }
     }
 }
 
@@ -136,6 +145,7 @@ export async function calibrate(
         throw new CalibrationError(
             'Could not match audio — make sure music is playing on the target device ' +
             'and hold this device close to its speaker.',
+            { micMono, refWindow, sampleRate },
         );
     }
 
