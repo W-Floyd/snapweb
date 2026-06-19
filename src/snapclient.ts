@@ -1,7 +1,7 @@
 import { SnapStream } from './snapstream'
 
 /**
- * <snap-audio src="ws://snapserver:1704" autoplay></snap-audio>
+ * <snapclient src="ws://snapserver:1704" autoplay></snapclient>
  *
  * Attributes:
  *   src      – snapcast server WebSocket base URL (required)
@@ -17,7 +17,7 @@ import { SnapStream } from './snapstream'
  *   stopped  – stream torn down
  *   error    – SnapStream constructor threw (e.g. Web Audio not supported)
  */
-class SnapAudio extends HTMLElement {
+class SnapClient extends HTMLElement {
     private stream: SnapStream | null = null
     private _onVisibility: () => void
 
@@ -90,8 +90,8 @@ class SnapAudio extends HTMLElement {
     }
 }
 
-if (!customElements.get('snap-audio')) {
-    customElements.define('snap-audio', SnapAudio)
+if (!customElements.get('snapclient')) {
+    customElements.define('snapclient', SnapClient)
 }
 
-export { SnapAudio }
+export { SnapClient }

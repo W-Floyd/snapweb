@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
   },
-  base: './',
+  base: process.env.VITE_BASE_URL ?? './',
   plugins: [react(),
   VitePWA({
     registerType: 'autoUpdate',
