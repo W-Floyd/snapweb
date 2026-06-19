@@ -6,8 +6,9 @@ import { GraphicEq as GraphicEqIcon, PlayArrow as PlayArrowIcon } from '@mui/ico
 import { SnapStream } from '../snapstream';
 import { calibrate, CalibrationError, CalibrationResult } from '../sync-calibrator';
 
-function playMono(samples: Float32Array, sampleRate: number) {
+async function playMono(samples: Float32Array, sampleRate: number) {
     const ctx = new AudioContext({ sampleRate });
+    await ctx.resume();
     const buf = ctx.createBuffer(1, samples.length, sampleRate);
     buf.getChannelData(0).set(samples);
     const src = ctx.createBufferSource();
@@ -172,7 +173,7 @@ export default function SyncCalibrator({ snapStream, currentLatencyMs, onCalibra
 
             {state.kind === 'error' && (
                 <Box>
-                    <Alert severity="error" sx={{ mb: 1 }}>{state.message}</Alert>
+                    <Alert severity="error" sx={{ mb: 1, whiteSpace: 'pre-line' }}>{state.message}</Alert>
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                         <Button size="small" onClick={run}>Retry</Button>
                         <Button size="small" onClick={() => setState({ kind: 'idle' })}>Dismiss</Button>
@@ -182,7 +183,7 @@ export default function SyncCalibrator({ snapStream, currentLatencyMs, onCalibra
                                 Mic
                             </Button>
                         )}
-                        {state.refWindow && state.sampleRate && (
+                        {state.refWindow && state.refWindow.length > 0 && state.sampleRate && (
                             <Button size="small" startIcon={<PlayArrowIcon />}
                                 onClick={() => playMono(state.refWindow!, state.sampleRate!)}>
                                 Ref

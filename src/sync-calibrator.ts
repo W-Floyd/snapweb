@@ -125,6 +125,17 @@ export async function calibrate(
         throw new CalibrationError('Not enough audio captured. Is music playing?');
     }
 
+    const micPeak = micMono.reduce((m, s) => Math.max(m, Math.abs(s)), 0);
+    if (micPeak < 0.001) {
+        throw new CalibrationError(
+            'Microphone is silent. Check that:\n' +
+            '• System microphone permission is granted to this browser\n' +
+            '• The correct input device is selected\n' +
+            '• The microphone is not muted',
+            { micMono, refWindow: new Float32Array(0), sampleRate },
+        );
+    }
+
     // synaudio requires the comparison to be shorter than the base so it can
     // slide it to find the best alignment. A fixed 2s window from the middle of
     // the reference gives ~2s of searchable offset range with a 4s mic recording.
