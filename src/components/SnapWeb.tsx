@@ -326,7 +326,15 @@ export default function SnapWeb() {
       audioRef.current.play().then(
         () => {
           setAutoplaySuccess(true)
-          snapstreamRef.current = new SnapStream(config.baseUrl);
+          try {
+            snapstreamRef.current = new SnapStream(config.baseUrl);
+          } catch (err) {
+            console.error("SnapStream init failed:", err);
+            setAutoplaySuccess(false);
+            setIsPlaying(false);
+            audioRef.current.pause();
+            audioRef.current.src = '';
+          }
         },
         (error) => {
           setAutoplaySuccess(false)

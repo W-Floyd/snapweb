@@ -1,5 +1,4 @@
 import Flac from 'libflacjs/dist/libflac.js'
-import { getPersistentValue } from './config.ts'
 import { AudioContext, IAudioBuffer, IAudioContext, IAudioBufferSourceNode, IGainNode } from 'standardized-audio-context'
 import { OpusDecoder as WasmOpusDecoder } from "opus-decoder";
 
@@ -1004,7 +1003,7 @@ class SnapStream {
         if (this.setupAudioContext()) {
             this.connect();
         } else {
-            alert("Sorry, but the Web Audio API is not supported by your browser");
+            throw new Error("Web Audio API is not supported in this browser");
         }
     }
 
@@ -1034,7 +1033,15 @@ class SnapStream {
     }
 
     public static getClientId(): string {
-        return getPersistentValue("uniqueId", uuidv4());
+        const key = "uniqueId";
+        if (window.localStorage) {
+            const stored = window.localStorage.getItem(key);
+            if (stored !== null) return stored;
+            const id = uuidv4();
+            window.localStorage.setItem(key, id);
+            return id;
+        }
+        return uuidv4();
     }
 
     private connect() {
@@ -1077,13 +1084,13 @@ class SnapStream {
             } else if (codec.codec === "opus") {
                 this.decoder = new OpusDecoder();
             } else {
-                alert("Codec not supported: " + codec.codec);
+                console.error("Codec not supported: " + codec.codec);
             }
             if (this.decoder) {
                 this.sampleFormat = this.decoder.setHeader(codec.payload)!;
                 console.log("Sampleformat: " + this.sampleFormat.toString());
                 if ((this.sampleFormat.channels !== 2) || (this.sampleFormat.bits < 16)) {
-                    alert("Stream must be stereo with 16, 24 or 32 bit depth, actual format: " + this.sampleFormat.toString());
+                    console.error("Stream must be stereo with 16, 24 or 32 bit depth, actual format: " + this.sampleFormat.toString());
                 } else {
                     if (this.bufferDurationMs !== 0) {
                         this.bufferFrameCount = Math.floor(this.bufferDurationMs * this.sampleFormat.msRate());
